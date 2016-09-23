@@ -153,6 +153,9 @@ container on your host.`,
 					"/proc/timer_stats",
 					"/proc/sched_debug",
 				},
+				MaskedDirPaths: []string{
+					"/sys/firmware",
+				},
 				ReadonlyPaths: []string{
 					"/proc/asound",
 					"/proc/bus",

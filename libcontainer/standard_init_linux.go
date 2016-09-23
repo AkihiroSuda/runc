@@ -112,6 +112,11 @@ func (l *linuxStandardInit) Init() error {
 			return err
 		}
 	}
+	for _, path := range l.config.Config.MaskDirPaths {
+		if err := maskDir(path); err != nil {
+			return err
+		}
+	}
 	pdeath, err := system.GetParentDeathSignal()
 	if err != nil {
 		return err

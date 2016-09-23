@@ -212,6 +212,7 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 	config.Cgroups = c
 	// set extra path masking for libcontainer for the various unsafe places in proc
 	config.MaskPaths = spec.Linux.MaskedPaths
+	config.MaskDirPaths = spec.Linux.MaskedDirPaths
 	config.ReadonlyPaths = spec.Linux.ReadonlyPaths
 	if spec.Linux.Seccomp != nil {
 		seccomp, err := setupSeccomp(spec.Linux.Seccomp)

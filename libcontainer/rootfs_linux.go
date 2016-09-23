@@ -674,6 +674,15 @@ func maskFile(path string) error {
 	return nil
 }
 
+// maskDir mounts tmpfs over the top of the specified directory path inside a container
+// to avoid security issues from processes reading information from non-namespace aware mounts ( proc/kcore ).
+func maskDir(path string) error {
+	if err := syscall.Mount("tmpfs", path, "tmpfs", syscall.MS_RDONLY, ""); err != nil {
+		return err
+	}
+	return nil
+}
+
 // writeSystemProperty writes the value to a path under /proc/sys as determined from the key.
 // For e.g. net.ipv4.ip_forward translated to /proc/sys/net/ipv4/ip_forward.
 func writeSystemProperty(key, value string) error {

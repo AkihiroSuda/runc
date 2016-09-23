@@ -158,6 +158,10 @@ type Config struct {
 	// mount pointing to /dev/null as to prevent reads of the file.
 	MaskPaths []string `json:"mask_paths"`
 
+	// MaskDirPaths specifies directory paths within the container's rootfs to mask over with
+	// a tmpfs so as to prevent reads of the file.
+	MaskDirPaths []string `json:"mask_dir_paths"`
+
 	// ReadonlyPaths specifies paths within the container's rootfs to remount as read-only
 	// so that these files prevent any writes.
 	ReadonlyPaths []string `json:"readonly_paths"`

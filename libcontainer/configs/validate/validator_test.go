@@ -115,6 +115,24 @@ func TestValidateSecurityWithMaskPaths(t *testing.T) {
 	}
 }
 
+func TestValidateSecurityWithMaskDirPaths(t *testing.T) {
+	config := &configs.Config{
+		Rootfs:       "/var",
+		MaskDirPaths: []string{"/sys/firmware"},
+		Namespaces: configs.Namespaces(
+			[]configs.Namespace{
+				{Type: configs.NEWNS},
+			},
+		),
+	}
+
+	validator := validate.New()
+	err := validator.Validate(config)
+	if err != nil {
+		t.Errorf("Expected error to not occur: %+v", err)
+	}
+}
+
 func TestValidateSecurityWithROPaths(t *testing.T) {
 	config := &configs.Config{
 		Rootfs:        "/var",
