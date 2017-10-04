@@ -40,7 +40,8 @@ func needsSetupDev(config *configs.Config) bool {
 // prepareRootfs sets up the devices, mount points, and filesystems for use
 // inside a new mount namespace. It doesn't set anything as ro. You must call
 // finalizeRootfs after this function to finish setting up the rootfs.
-func prepareRootfs(pipe io.ReadWriter, config *configs.Config) (err error) {
+func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig) (err error) {
+	config := iConfig.Config
 	if err := prepareRoot(config); err != nil {
 		return newSystemErrorWithCause(err, "preparing rootfs")
 	}
@@ -73,6 +74,13 @@ func prepareRootfs(pipe io.ReadWriter, config *configs.Config) (err error) {
 		}
 		if err := setupDevSymlinks(config.Rootfs); err != nil {
 			return newSystemErrorWithCause(err, "setting up /dev symlinks")
+		}
+	}
+
+	// Setup Cwd before running the pre-start hooks, so that hooks can play with Cwd.
+	if cwd := iConfig.Cwd; cwd != "" {
+		if err := setupCwd(config.Rootfs, cwd); err != nil {
+			return newSystemErrorWithCausef(err, "setting up cwd %q", cwd)
 		}
 	}
 
@@ -816,4 +824,12 @@ func mountPropagate(m *configs.Mount, rootfs string, mountLabel string) error {
 		}
 	}
 	return nil
+}
+
+// setupCwd creates cwd with 0755 permission if it doesn't exist
+func setupCwd(rootfs, cwd string) error {
+	// Note that spec.Process.Cwd is unreliable and can contain unclean value like  "../../../../foo/bar...".
+	cleanCwd := libcontainerUtils.CleanPath(cwd)
+	mk := filepath.Join(rootfs, cleanCwd)
+	return os.MkdirAll(mk, 0755)
 }
