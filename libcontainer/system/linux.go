@@ -130,6 +130,33 @@ func RunningInUserNS() bool {
 	return true
 }
 
+// GetParentNSeuid returns the euid within the parent user namespace
+func GetParentNSeuid() int {
+	euid := os.Geteuid()
+	euid64 := int64(euid)
+	file, err := os.Open("/proc/self/uid_map")
+	if err != nil {
+		// This kernel-provided file only exists if user namespaces are supported
+		return euid
+	}
+	defer file.Close()
+
+	buf := bufio.NewReader(file)
+	for {
+		l, _, err := buf.ReadLine()
+		if err != nil { // err can be io.EOF
+			return euid
+		}
+
+		line := string(l)
+		var a, b, c int64
+		fmt.Sscanf(line, "%d %d %d", &a, &b, &c)
+		if a <= euid64 && euid64 <= a+c-1 {
+			return int(b + euid64 - a)
+		}
+	}
+}
+
 // SetSubreaper sets the value i as the subreaper setting for the calling process
 func SetSubreaper(i int) error {
 	return unix.Prctl(PR_SET_CHILD_SUBREAPER, uintptr(i), 0, 0, 0)
