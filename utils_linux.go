@@ -16,6 +16,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/intelrdt"
 	"github.com/opencontainers/runc/libcontainer/specconv"
+	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/runc/libcontainer/utils"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
@@ -219,7 +220,9 @@ func createPidFile(path string, process *libcontainer.Process) error {
 
 // XXX: Currently we autodetect rootless mode.
 func isRootless() bool {
-	return os.Geteuid() != 0
+	// Even if euid == 0, it might still require rootless mode.
+	// Especially when running within `unshare -m -r`.
+	return os.Geteuid() != 0 || system.RunningInRootlessUserNS()
 }
 
 func createContainer(context *cli.Context, id string, spec *specs.Spec) (libcontainer.Container, error) {

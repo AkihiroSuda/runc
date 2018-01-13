@@ -63,7 +63,7 @@ func main() {
 	app.Version = strings.Join(v, "\n")
 
 	root := "/run/runc"
-	if os.Geteuid() != 0 {
+	if isRootless() {
 		runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 		if runtimeDir != "" {
 			root = runtimeDir + "/runc"

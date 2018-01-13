@@ -130,6 +130,31 @@ func RunningInUserNS() bool {
 	return true
 }
 
+// RunningInUserNS detects whether we are currently running in a rootless user namespace.
+func RunningInRootlessUserNS() bool {
+	file, err := os.Open("/proc/self/uid_map")
+	if err != nil {
+		// This kernel-provided file only exists if user namespaces are supported
+		return false
+	}
+	defer file.Close()
+
+	buf := bufio.NewReader(file)
+	for {
+		l, _, err := buf.ReadLine()
+		if err != nil {
+			return false
+		}
+
+		line := string(l)
+		var a, b, c int64
+		fmt.Sscanf(line, "%d %d %d", &a, &b, &c)
+		if a == 0 && b != 0 {
+			return true
+		}
+	}
+}
+
 // SetSubreaper sets the value i as the subreaper setting for the calling process
 func SetSubreaper(i int) error {
 	return unix.Prctl(PR_SET_CHILD_SUBREAPER, uintptr(i), 0, 0, 0)
