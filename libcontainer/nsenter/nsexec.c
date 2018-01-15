@@ -88,6 +88,7 @@ struct nlconfig_t {
 	size_t uidmappath_len;
 	char *gidmappath;
 	size_t gidmappath_len;
+	uint8_t force_mapping_tool;
 };
 
 /*
@@ -104,6 +105,7 @@ struct nlconfig_t {
 #define ROOTLESS_ATTR	    27287
 #define UIDMAPPATH_ATTR	    27288
 #define GIDMAPPATH_ATTR	    27289
+#define FORCE_MAPPING_TOOL_ATTR	    27290
 
 /*
  * Use the raw syscall for versions of glibc which don't include a function for
@@ -178,7 +180,8 @@ enum policy_t {
 	SETGROUPS_DENY,
 };
 
-/* This *must* be called before we touch gid_map. */
+/* This *must* be called before we touch gid_map,
+   unless force_mapping_tool is set */
 static void update_setgroups(int pid, enum policy_t setgroup)
 {
 	char *policy;
@@ -272,10 +275,16 @@ static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len)
 	return -1;
 }
 
-static void update_uidmap(const char *path, int pid, char *map, size_t map_len)
+static void update_uidmap(const char *path, int pid, char *map, size_t map_len, bool force_mapping_tool)
 {
 	if (map == NULL || map_len <= 0)
 		return;
+
+	if (force_mapping_tool) {
+		if (try_mapping_tool(path, pid, map, map_len))
+			bail("failed to use newuid map on %d", pid);
+		return;
+	}
 
 	if (write_file(map, map_len, "/proc/%d/uid_map", pid) < 0) {
 		if (errno != EPERM)
@@ -285,10 +294,16 @@ static void update_uidmap(const char *path, int pid, char *map, size_t map_len)
 	}
 }
 
-static void update_gidmap(const char *path, int pid, char *map, size_t map_len)
+static void update_gidmap(const char *path, int pid, char *map, size_t map_len, bool force_mapping_tool)
 {
 	if (map == NULL || map_len <= 0)
 		return;
+
+	if (force_mapping_tool) {
+		if (try_mapping_tool(path, pid, map, map_len))
+			bail("failed to use newgid map on %d", pid);
+		return;
+	}
 
 	if (write_file(map, map_len, "/proc/%d/gid_map", pid) < 0) {
 		if (errno != EPERM)
@@ -449,6 +464,9 @@ static void nl_parse(int fd, struct nlconfig_t *config)
 			break;
 		case SETGROUP_ATTR:
 			config->is_setgroup = readint8(current);
+			break;
+		case FORCE_MAPPING_TOOL_ATTR:
+			config->force_mapping_tool = readint8(current);
 			break;
 		default:
 			bail("unknown netlink message type %d", nlattr->nla_type);
@@ -681,20 +699,22 @@ void nsexec(void)
 					 * have to explicitly disable setgroups(2) if we're
 					 * creating a rootless container (this is required since
 					 * Linux 3.19).
+					 *
+					 * However, we can use mapping tool (with suid bit) to allow setgroups.
 					 */
-					if (config.is_rootless && config.is_setgroup) {
+					if (config.is_rootless && config.is_setgroup && !config.force_mapping_tool) {
 						kill(child, SIGKILL);
-						bail("cannot allow setgroup in an unprivileged user namespace setup");
+						bail("cannot allow setgroup in an unprivileged user namespace setup without the mapping tool");
 					}
 
 					if (config.is_setgroup)
 						update_setgroups(child, SETGROUPS_ALLOW);
-					if (config.is_rootless)
+					if (config.is_rootless && !config.force_mapping_tool)
 						update_setgroups(child, SETGROUPS_DENY);
 
 					/* Set up mappings. */
-					update_uidmap(config.uidmappath, child, config.uidmap, config.uidmap_len);
-					update_gidmap(config.gidmappath, child, config.gidmap, config.gidmap_len);
+					update_uidmap(config.uidmappath, child, config.uidmap, config.uidmap_len, config.force_mapping_tool);
+					update_gidmap(config.gidmappath, child, config.gidmap, config.gidmap_len, config.force_mapping_tool);
 
 					s = SYNC_USERMAP_ACK;
 					if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {

@@ -1749,19 +1749,23 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 					Value: []byte(c.newgidmapPath),
 				})
 			}
-			// The following only applies if we are root.
-			if !c.config.Rootless {
-				// check if we have CAP_SETGID to setgroup properly
-				pid, err := capability.NewPid(os.Getpid())
-				if err != nil {
-					return nil, err
-				}
-				if !pid.Get(capability.EFFECTIVE, capability.CAP_SETGID) {
-					r.AddData(&Boolmsg{
-						Type:  SetgroupAttr,
-						Value: true,
-					})
-				}
+			// check if we have CAP_SETGID to setgroup properly
+			pid, err := capability.NewPid(os.Getpid())
+			if err != nil {
+				return nil, err
+			}
+			if !pid.Get(capability.EFFECTIVE, capability.CAP_SETGID) {
+				r.AddData(&Boolmsg{
+					Type:  SetgroupAttr,
+					Value: true,
+				})
+			}
+			// TODO: check CLI flag
+			if c.config.Rootless && c.newuidmapPath != "" && c.newgidmapPath != "" {
+				r.AddData(&Boolmsg{
+					Type:  ForceMappingToolAttr,
+					Value: true,
+				})
 			}
 		}
 	}
