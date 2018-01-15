@@ -48,6 +48,7 @@ type linuxContainer struct {
 	criuPath             string
 	newuidmapPath        string
 	newgidmapPath        string
+	forceMappingTool     bool
 	m                    sync.Mutex
 	criuVersion          int
 	state                containerState
@@ -1801,8 +1802,9 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 					Value: []byte(c.newgidmapPath),
 				})
 			}
-			// The following only applies if we are root.
-			if !c.config.Rootless {
+			// The following only applies if we are root, unless we are
+			// advised to use the mapping tool.
+			if !(c.config.Rootless && !c.forceMappingTool) {
 				// check if we have CAP_SETGID to setgroup properly
 				pid, err := capability.NewPid(0)
 				if err != nil {
@@ -1815,6 +1817,12 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 					})
 				}
 			}
+		}
+		if c.forceMappingTool {
+			r.AddData(&Boolmsg{
+				Type:  ForceMappingToolAttr,
+				Value: true,
+			})
 		}
 	}
 

@@ -62,11 +62,16 @@ func loadFactory(context *cli.Context) (libcontainer.Factory, error) {
 	if err != nil {
 		newgidmap = ""
 	}
+	forceMappingTool := context.Bool("force-mapping-tool")
+	if forceMappingTool && (newuidmap == "" || newgidmap == "") {
+		return nil, errors.New("force mapping tool flag passed, but newuidmap/newgidmap tool is not available")
+	}
 
 	return libcontainer.New(abs, cgroupManager, intelRdtManager,
 		libcontainer.CriuPath(context.GlobalString("criu")),
 		libcontainer.NewuidmapPath(newuidmap),
-		libcontainer.NewgidmapPath(newgidmap))
+		libcontainer.NewgidmapPath(newgidmap),
+		libcontainer.ForceMappingTool(forceMappingTool))
 }
 
 // getContainer returns the specified container instance by loading it from state
