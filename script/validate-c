@@ -1,0 +1,41 @@
+#!/bin/bash
+
+source "$(dirname "$BASH_SOURCE")/.validate"
+
+IFS=$'\n'
+files=($(validate_diff --diff-filter=ACMR --name-only -- '*.c' | grep -v '^vendor/' || true))
+unset IFS
+
+INDENT="indent -linux -l120"
+if [ -z "$(indent --version 2>&1 | grep GNU)" ]; then
+    	echo "Skipping C indentation checks, as GNU indent is not installed."
+	exit 0
+fi
+
+badFiles=()
+for f in "${files[@]}"; do
+	orig=$(mktemp)
+	formatted=$(mktemp) 
+	# we use "git show" here to validate that what's committed is formatted
+	git show "$VALIDATE_HEAD:$f" > ${orig}
+	${INDENT} ${orig} -o ${formatted}
+	if [ "$(diff -u ${orig} ${formatted})" ]; then
+		badFiles+=("$f")
+	fi
+	rm -f ${orig} ${formatted}
+done
+
+if [ ${#badFiles[@]} -eq 0 ]; then
+	echo 'Congratulations!  All C source files are properly formatted.'
+else
+	{
+		echo "These files are not properly formatted:"
+		for f in "${badFiles[@]}"; do
+			echo " - $f"
+		done
+		echo
+		echo "Please reformat the above files using \"${INDENT}\" and commit the result."
+		echo
+	} >&2
+	false
+fi
