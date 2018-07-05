@@ -2,23 +2,16 @@ package validate
 
 import (
 	"fmt"
-	"os"
-	"reflect"
 	"strings"
 
 	"github.com/opencontainers/runc/libcontainer/configs"
 )
 
-var (
-	geteuid = os.Geteuid
-	getegid = os.Getegid
-)
-
-func (v *ConfigValidator) rootless(config *configs.Config) error {
-	if err := rootlessMappings(config); err != nil {
+func (v *ConfigValidator) nonZeroEUID(config *configs.Config) error {
+	if err := nonZeroEUIDMappings(config); err != nil {
 		return err
 	}
-	if err := rootlessMount(config); err != nil {
+	if err := nonZeroEUIDMount(config); err != nil {
 		return err
 	}
 
@@ -38,46 +31,23 @@ func hasIDMapping(id int, mappings []configs.IDMap) bool {
 	return false
 }
 
-func rootlessMappings(config *configs.Config) error {
-	if euid := geteuid(); euid != 0 {
-		if !config.Namespaces.Contains(configs.NEWUSER) {
-			return fmt.Errorf("rootless containers require user namespaces")
-		}
-		if len(config.UidMappings) == 0 {
-			return fmt.Errorf("rootless containers requires at least one UID mapping")
-		}
-		if len(config.GidMappings) == 0 {
-			return fmt.Errorf("rootless containers requires at least one GID mapping")
-		}
+func nonZeroEUIDMappings(config *configs.Config) error {
+	if !config.Namespaces.Contains(configs.NEWUSER) {
+		return fmt.Errorf("requires user namespaces, when runc is executed as an unprivileged user")
 	}
-
-	return nil
-}
-
-// cgroup verifies that the user isn't trying to set any cgroup limits or paths.
-func rootlessCgroup(config *configs.Config) error {
-	// Nothing set at all.
-	if config.Cgroups == nil || config.Cgroups.Resources == nil {
-		return nil
+	if len(config.UidMappings) == 0 {
+		return fmt.Errorf("requires at least one UID mapping, when runc is executed as an unprivileged user")
 	}
-
-	// Used for comparing to the zero value.
-	left := reflect.ValueOf(*config.Cgroups.Resources)
-	right := reflect.Zero(left.Type())
-
-	// This is all we need to do, since specconv won't add cgroup options in
-	// rootless mode.
-	if !reflect.DeepEqual(left.Interface(), right.Interface()) {
-		return fmt.Errorf("cannot specify resource limits in rootless container")
+	if len(config.GidMappings) == 0 {
+		return fmt.Errorf("requires at least one GID mapping, when runc is executed as an unprivileged user")
 	}
-
 	return nil
 }
 
 // mount verifies that the user isn't trying to set up any mounts they don't have
 // the rights to do. In addition, it makes sure that no mount has a `uid=` or
 // `gid=` option that doesn't resolve to root.
-func rootlessMount(config *configs.Config) error {
+func nonZeroEUIDMount(config *configs.Config) error {
 	// XXX: We could whitelist allowed devices at this point, but I'm not
 	//      convinced that's a good idea. The kernel is the best arbiter of
 	//      access control.
@@ -94,7 +64,7 @@ func rootlessMount(config *configs.Config) error {
 					continue
 				}
 				if !hasIDMapping(uid, config.UidMappings) {
-					return fmt.Errorf("cannot specify uid= mount options for unmapped uid in rootless containers")
+					return fmt.Errorf("cannot specify uid= mount options for unmapped uid")
 				}
 			}
 
@@ -106,7 +76,7 @@ func rootlessMount(config *configs.Config) error {
 					continue
 				}
 				if !hasIDMapping(gid, config.GidMappings) {
-					return fmt.Errorf("cannot specify gid= mount options for unmapped gid in rootless containers")
+					return fmt.Errorf("cannot specify gid= mount options for unmapped gid")
 				}
 			}
 		}

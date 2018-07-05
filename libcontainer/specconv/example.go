@@ -155,10 +155,10 @@ func Example() *specs.Spec {
 	}
 }
 
-// ToRootless converts the given spec file into one that should work with
+// ToNonZeroEUIDCompatible converts the given spec file into one that should work with
 // rootless containers, by removing incompatible options and adding others that
 // are needed.
-func ToRootless(spec *specs.Spec) {
+func ToNonZeroEUIDCompatible(spec *specs.Spec) {
 	var namespaces []specs.LinuxNamespace
 
 	// Remove networkns from the spec.

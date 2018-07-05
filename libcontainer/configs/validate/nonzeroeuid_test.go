@@ -6,15 +6,11 @@ import (
 	"github.com/opencontainers/runc/libcontainer/configs"
 )
 
-func init() {
-	geteuid = func() int { return 1337 }
-	getegid = func() int { return 7331 }
-}
-
-func rootlessConfig() *configs.Config {
+func nonZeroEUIDConfig() *configs.Config {
 	return &configs.Config{
-		Rootfs:   "/var",
-		Rootless: true,
+		Rootfs:                  "/var",
+		LaunchedWithNonZeroEUID: true,
+		LenientCgroup:           true,
 		Namespaces: configs.Namespaces(
 			[]configs.Namespace{
 				{Type: configs.NEWUSER},
@@ -22,14 +18,14 @@ func rootlessConfig() *configs.Config {
 		),
 		UidMappings: []configs.IDMap{
 			{
-				HostID:      geteuid(),
+				HostID:      1337,
 				ContainerID: 0,
 				Size:        1,
 			},
 		},
 		GidMappings: []configs.IDMap{
 			{
-				HostID:      getegid(),
+				HostID:      7331,
 				ContainerID: 0,
 				Size:        1,
 			},
@@ -37,51 +33,51 @@ func rootlessConfig() *configs.Config {
 	}
 }
 
-func TestValidateRootless(t *testing.T) {
+/* nonZeroEUIDMappings() */
+
+func TestValidateNonZeroEUID(t *testing.T) {
 	validator := New()
 
-	config := rootlessConfig()
+	config := nonZeroEUIDConfig()
 	if err := validator.Validate(config); err != nil {
 		t.Errorf("Expected error to not occur: %+v", err)
 	}
 }
 
-/* rootlessMappings() */
-
-func TestValidateRootlessUserns(t *testing.T) {
+func TestValidateNonZeroEUIDUserns(t *testing.T) {
 	validator := New()
 
-	config := rootlessConfig()
+	config := nonZeroEUIDConfig()
 	config.Namespaces = nil
 	if err := validator.Validate(config); err == nil {
 		t.Errorf("Expected error to occur if user namespaces not set")
 	}
 }
 
-func TestValidateRootlessMappingUid(t *testing.T) {
+func TestValidateNonZeroEUIDMappingUid(t *testing.T) {
 	validator := New()
 
-	config := rootlessConfig()
+	config := nonZeroEUIDConfig()
 	config.UidMappings = nil
 	if err := validator.Validate(config); err == nil {
 		t.Errorf("Expected error to occur if no uid mappings provided")
 	}
 }
 
-func TestValidateRootlessMappingGid(t *testing.T) {
+func TestValidateNonZeroEUIDMappingGid(t *testing.T) {
 	validator := New()
 
-	config := rootlessConfig()
+	config := nonZeroEUIDConfig()
 	config.GidMappings = nil
 	if err := validator.Validate(config); err == nil {
 		t.Errorf("Expected error to occur if no gid mappings provided")
 	}
 }
 
-/* rootlessMount() */
+/* nonZeroEUIDMount() */
 
-func TestValidateRootlessMountUid(t *testing.T) {
-	config := rootlessConfig()
+func TestValidateNonZeroEUIDMountUid(t *testing.T) {
+	config := nonZeroEUIDConfig()
 	validator := New()
 
 	config.Mounts = []*configs.Mount{
@@ -119,8 +115,8 @@ func TestValidateRootlessMountUid(t *testing.T) {
 	}
 }
 
-func TestValidateRootlessMountGid(t *testing.T) {
-	config := rootlessConfig()
+func TestValidateNonZeroEUIDMountGid(t *testing.T) {
+	config := nonZeroEUIDConfig()
 	validator := New()
 
 	config.Mounts = []*configs.Mount{
