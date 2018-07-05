@@ -65,7 +65,7 @@ type subsystem interface {
 type Manager struct {
 	mu       sync.Mutex
 	Cgroups  *configs.Cgroup
-	Rootless bool
+	Rootless bool // ignore permission-related errors
 	Paths    map[string]string
 }
 
@@ -174,7 +174,7 @@ func (m *Manager) Apply(pid int) (err error) {
 		m.Paths[sys.Name()] = p
 
 		if err := sys.Apply(d); err != nil {
-			// In the case of rootless, where an explicit cgroup path hasn't
+			// In the case of rootless (including euid=0 in userns), where an explicit cgroup path hasn't
 			// been set, we don't bail on error in case of permission problems.
 			// Cases where limits have been set (and we couldn't create our own
 			// cgroup) are handled by Set.
