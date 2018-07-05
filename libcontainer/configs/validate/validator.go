@@ -44,8 +44,8 @@ func (v *ConfigValidator) Validate(config *configs.Config) error {
 	if err := v.intelrdt(config); err != nil {
 		return err
 	}
-	if config.Rootless {
-		if err := v.rootless(config); err != nil {
+	if config.LaunchedWithNonZeroEUID {
+		if err := v.nonZeroEUID(config); err != nil {
 			return err
 		}
 	}

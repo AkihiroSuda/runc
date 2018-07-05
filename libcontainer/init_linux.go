@@ -48,24 +48,25 @@ type network struct {
 
 // initConfig is used for transferring parameters from Exec() to Init()
 type initConfig struct {
-	Args             []string              `json:"args"`
-	Env              []string              `json:"env"`
-	Cwd              string                `json:"cwd"`
-	Capabilities     *configs.Capabilities `json:"capabilities"`
-	ProcessLabel     string                `json:"process_label"`
-	AppArmorProfile  string                `json:"apparmor_profile"`
-	NoNewPrivileges  bool                  `json:"no_new_privileges"`
-	User             string                `json:"user"`
-	AdditionalGroups []string              `json:"additional_groups"`
-	Config           *configs.Config       `json:"config"`
-	Networks         []*network            `json:"network"`
-	PassedFilesCount int                   `json:"passed_files_count"`
-	ContainerId      string                `json:"containerid"`
-	Rlimits          []configs.Rlimit      `json:"rlimits"`
-	CreateConsole    bool                  `json:"create_console"`
-	ConsoleWidth     uint16                `json:"console_width"`
-	ConsoleHeight    uint16                `json:"console_height"`
-	Rootless         bool                  `json:"rootless"`
+	Args                    []string              `json:"args"`
+	Env                     []string              `json:"env"`
+	Cwd                     string                `json:"cwd"`
+	Capabilities            *configs.Capabilities `json:"capabilities"`
+	ProcessLabel            string                `json:"process_label"`
+	AppArmorProfile         string                `json:"apparmor_profile"`
+	NoNewPrivileges         bool                  `json:"no_new_privileges"`
+	User                    string                `json:"user"`
+	AdditionalGroups        []string              `json:"additional_groups"`
+	Config                  *configs.Config       `json:"config"`
+	Networks                []*network            `json:"network"`
+	PassedFilesCount        int                   `json:"passed_files_count"`
+	ContainerId             string                `json:"containerid"`
+	Rlimits                 []configs.Rlimit      `json:"rlimits"`
+	CreateConsole           bool                  `json:"create_console"`
+	ConsoleWidth            uint16                `json:"console_width"`
+	ConsoleHeight           uint16                `json:"console_height"`
+	LaunchedWithNonZeroEUID bool                  `json:"launched_with_non_zero_euid,omitempty"`
+	LenientCgroup           bool                  `json:"lenient_cgroup,omitempty"`
 }
 
 type initer interface {
@@ -283,7 +284,7 @@ func setupUser(config *initConfig) error {
 		return fmt.Errorf("cannot set gid to unmapped user in user namespace")
 	}
 
-	if config.Rootless {
+	if config.LaunchedWithNonZeroEUID {
 		// We cannot set any additional groups in a rootless container and thus
 		// we bail if the user asked us to do so. TODO: We currently can't do
 		// this check earlier, but if libcontainer.Process.User was typesafe
@@ -303,7 +304,7 @@ func setupUser(config *initConfig) error {
 	// There's nothing we can do about /etc/group entries, so we silently
 	// ignore setting groups here (since the user didn't explicitly ask us to
 	// set the group).
-	if !config.Rootless {
+	if !config.LaunchedWithNonZeroEUID {
 		suppGroups := append(execUser.Sgids, addGroups...)
 		if err := unix.Setgroups(suppGroups); err != nil {
 			return err

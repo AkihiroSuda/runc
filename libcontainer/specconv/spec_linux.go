@@ -148,7 +148,9 @@ type CreateOpts struct {
 	NoPivotRoot      bool
 	NoNewKeyring     bool
 	Spec             *specs.Spec
-	Rootless         bool
+	// set to false when launched with EUID=0 in userns.
+	LaunchedWithNonZeroEUID bool
+	LenientCgroup           bool
 }
 
 // CreateLibcontainerConfig creates a new libcontainer configuration from a
@@ -176,13 +178,14 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 		labels = append(labels, fmt.Sprintf("%s=%s", k, v))
 	}
 	config := &configs.Config{
-		Rootfs:       rootfsPath,
-		NoPivotRoot:  opts.NoPivotRoot,
-		Readonlyfs:   spec.Root.Readonly,
-		Hostname:     spec.Hostname,
-		Labels:       append(labels, fmt.Sprintf("bundle=%s", cwd)),
-		NoNewKeyring: opts.NoNewKeyring,
-		Rootless:     opts.Rootless,
+		Rootfs:                  rootfsPath,
+		NoPivotRoot:             opts.NoPivotRoot,
+		Readonlyfs:              spec.Root.Readonly,
+		Hostname:                spec.Hostname,
+		Labels:                  append(labels, fmt.Sprintf("bundle=%s", cwd)),
+		NoNewKeyring:            opts.NoNewKeyring,
+		LaunchedWithNonZeroEUID: opts.LaunchedWithNonZeroEUID,
+		LenientCgroup:           opts.LenientCgroup,
 	}
 
 	exists := false
@@ -332,12 +335,8 @@ func createCgroupConfig(opts *CreateOpts) (*configs.Cgroup, error) {
 		c.Path = myCgroupPath
 	}
 
-	// In rootless containers, any attempt to make cgroup changes will fail.
-	// libcontainer will validate this and we shouldn't add any cgroup options
-	// the user didn't specify.
-	if !opts.Rootless {
-		c.Resources.AllowedDevices = allowedDevices
-	}
+	// NOTE: cgroup changes are likely to be ignored when LenientCgroup is true
+	c.Resources.AllowedDevices = allowedDevices
 	if spec.Linux != nil {
 		r := spec.Linux.Resources
 		if r == nil {
@@ -490,10 +489,8 @@ func createCgroupConfig(opts *CreateOpts) (*configs.Cgroup, error) {
 			}
 		}
 	}
-	if !opts.Rootless {
-		// append the default allowed devices to the end of the list
-		c.Resources.Devices = append(c.Resources.Devices, allowedDevices...)
-	}
+	// append the default allowed devices to the end of the list
+	c.Resources.Devices = append(c.Resources.Devices, allowedDevices...)
 	return c, nil
 }
 

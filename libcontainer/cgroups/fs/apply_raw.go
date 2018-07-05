@@ -63,10 +63,10 @@ type subsystem interface {
 }
 
 type Manager struct {
-	mu       sync.Mutex
-	Cgroups  *configs.Cgroup
-	Rootless bool
-	Paths    map[string]string
+	mu      sync.Mutex
+	Cgroups *configs.Cgroup
+	Lenient bool // ignore permission-related errors. also known as "rootless".
+	Paths   map[string]string
 }
 
 // The absolute path to the root of the cgroup hierarchies.
@@ -106,9 +106,9 @@ type cgroupData struct {
 // sense of the word). This includes EROFS (which for an unprivileged user is
 // basically a permission error) and EACCES (for similar reasons) as well as
 // the normal EPERM.
-func isIgnorableError(rootless bool, err error) bool {
+func isIgnorableError(lenient bool, err error) bool {
 	// We do not ignore errors if we are root.
-	if !rootless {
+	if !lenient {
 		return false
 	}
 	// Is it an ordinary EPERM?
@@ -174,11 +174,11 @@ func (m *Manager) Apply(pid int) (err error) {
 		m.Paths[sys.Name()] = p
 
 		if err := sys.Apply(d); err != nil {
-			// In the case of rootless, where an explicit cgroup path hasn't
+			// In the case of rootless (including euid=0 in userns), where an explicit cgroup path hasn't
 			// been set, we don't bail on error in case of permission problems.
 			// Cases where limits have been set (and we couldn't create our own
 			// cgroup) are handled by Set.
-			if isIgnorableError(m.Rootless, err) && m.Cgroups.Path == "" {
+			if isIgnorableError(m.Lenient, err) && m.Cgroups.Path == "" {
 				delete(m.Paths, sys.Name())
 				continue
 			}

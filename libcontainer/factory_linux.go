@@ -72,18 +72,18 @@ func Cgroupfs(l *LinuxFactory) error {
 	return nil
 }
 
-// RootlessCgroupfs is an options func to configure a LinuxFactory to return
+// LenientCgroupfs is an options func to configure a LinuxFactory to return
 // containers that use the native cgroups filesystem implementation to create
-// and manage cgroups. The difference between RootlessCgroupfs and Cgroupfs is
+// and manage cgroups. The difference between LenientCgroupfs and Cgroupfs is
 // that RootlessCgroupfs can transparently handle permission errors that occur
-// during rootless container setup (while still allowing cgroup usage if
+// during rootless container (including euid=0 in userns) setup (while still allowing cgroup usage if
 // they've been set up properly).
-func RootlessCgroupfs(l *LinuxFactory) error {
+func LenientCgroupfs(l *LinuxFactory) error {
 	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
 		return &fs.Manager{
-			Cgroups:  config,
-			Rootless: true,
-			Paths:    paths,
+			Cgroups: config,
+			Lenient: true,
+			Paths:   paths,
 		}
 	}
 	return nil
