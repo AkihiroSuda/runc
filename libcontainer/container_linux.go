@@ -59,7 +59,8 @@ type State struct {
 
 	// Platform specific fields below here
 
-	// Specifies if the container was started under the rootless mode.
+	// Specified if the container was started under the rootless mode.
+	// Set to true if BaseState.Config.RootlessEUID && BaseState.Config.RootlessCgroups
 	Rootless bool `json:"rootless"`
 
 	// Path to all the cgroups setup for a container. Key is cgroup subsystem name
@@ -545,7 +546,8 @@ func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
 		PassedFilesCount: len(process.ExtraFiles),
 		ContainerId:      c.ID(),
 		NoNewPrivileges:  c.config.NoNewPrivileges,
-		Rootless:         c.config.Rootless,
+		RootlessEUID:     c.config.RootlessEUID,
+		RootlessCgroups:  c.config.RootlessCgroups,
 		AppArmorProfile:  c.config.AppArmorProfile,
 		ProcessLabel:     c.config.ProcessLabel,
 		Rlimits:          c.config.Rlimits,
@@ -613,16 +615,16 @@ func (c *linuxContainer) Resume() error {
 
 func (c *linuxContainer) NotifyOOM() (<-chan struct{}, error) {
 	// XXX(cyphar): This requires cgroups.
-	if c.config.Rootless {
-		return nil, fmt.Errorf("cannot get OOM notifications from rootless container")
+	if c.config.RootlessCgroups {
+		logrus.Warn("getting OOM notifications may fail if you don't have the full access to cgroups")
 	}
 	return notifyOnOOM(c.cgroupManager.GetPaths())
 }
 
 func (c *linuxContainer) NotifyMemoryPressure(level PressureLevel) (<-chan struct{}, error) {
 	// XXX(cyphar): This requires cgroups.
-	if c.config.Rootless {
-		return nil, fmt.Errorf("cannot get memory pressure notifications from rootless container")
+	if c.config.RootlessCgroups {
+		logrus.Warn("getting memory pressure notifications may fail if you don't have the full access to cgroups")
 	}
 	return notifyMemoryPressure(c.cgroupManager.GetPaths(), level)
 }
@@ -866,12 +868,11 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
+	// Checkpoint is unlikely to work if os.Geteuid() != 0 || system.RunningInUserNS().
+	// (CLI prints a warning)
 	// TODO(avagin): Figure out how to make this work nicely. CRIU 2.0 has
 	//               support for doing unprivileged dumps, but the setup of
 	//               rootless containers might make this complicated.
-	if c.config.Rootless {
-		return fmt.Errorf("cannot checkpoint a rootless container")
-	}
 
 	// criu 1.5.2 => 10502
 	if err := c.checkCriuVersion(10502); err != nil {
@@ -1076,11 +1077,10 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
+	// Restore is unlikely to work if os.Geteuid() != 0 || system.RunningInUserNS().
+	// (CLI prints a warning)
 	// TODO(avagin): Figure out how to make this work nicely. CRIU doesn't have
 	//               support for unprivileged restore at the moment.
-	if c.config.Rootless {
-		return fmt.Errorf("cannot restore a rootless container")
-	}
 
 	// criu 1.5.2 => 10502
 	if err := c.checkCriuVersion(10502); err != nil {
@@ -1653,7 +1653,7 @@ func (c *linuxContainer) currentState() (*State, error) {
 			InitProcessStartTime: startTime,
 			Created:              c.created,
 		},
-		Rootless:            c.config.Rootless,
+		Rootless:            c.config.RootlessEUID && c.config.RootlessCgroups,
 		CgroupPaths:         c.cgroupManager.GetPaths(),
 		IntelRdtPath:        intelRdtPath,
 		NamespacePaths:      make(map[configs.NamespaceType]string),
@@ -1754,7 +1754,7 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 	if !joinExistingUser {
 		// write uid mappings
 		if len(c.config.UidMappings) > 0 {
-			if c.config.Rootless && c.newuidmapPath != "" {
+			if c.config.RootlessEUID && c.newuidmapPath != "" {
 				r.AddData(&Bytemsg{
 					Type:  UidmapPathAttr,
 					Value: []byte(c.newuidmapPath),
@@ -1780,7 +1780,7 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 				Type:  GidmapAttr,
 				Value: b,
 			})
-			if c.config.Rootless && c.newgidmapPath != "" {
+			if c.config.RootlessEUID && c.newgidmapPath != "" {
 				r.AddData(&Bytemsg{
 					Type:  GidmapPathAttr,
 					Value: []byte(c.newgidmapPath),
@@ -1805,8 +1805,8 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 
 	// write rootless
 	r.AddData(&Boolmsg{
-		Type:  RootlessAttr,
-		Value: c.config.Rootless,
+		Type:  RootlessEUIDAttr,
+		Value: c.config.RootlessEUID,
 	})
 
 	return bytes.NewReader(r.Serialize()), nil
