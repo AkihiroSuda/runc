@@ -162,6 +162,10 @@ func ToRootless(spec *specs.Spec) {
 	var namespaces []specs.LinuxNamespace
 
 	// Remove networkns from the spec.
+	//
+	// TODO: removal of networkns should be optional,
+	// because networkns can be made useful with usermode network stack
+	// such as slirp4netns or VPNKit.
 	for _, ns := range spec.Linux.Namespaces {
 		switch ns.Type {
 		case specs.NetworkNamespace, specs.UserNamespace:
@@ -189,13 +193,9 @@ func ToRootless(spec *specs.Spec) {
 	}}
 
 	// Fix up mounts.
-	var mounts []specs.Mount
-	for _, mount := range spec.Mounts {
-		// Ignore all mounts that are under /sys.
-		if strings.HasPrefix(mount.Destination, "/sys") {
-			continue
-		}
-
+	fixupRootlessBindSys(spec)
+	for i := range spec.Mounts {
+		mount := &spec.Mounts[i]
 		// Remove all gid= and uid= mappings.
 		var options []string
 		for _, option := range mount.Options {
@@ -203,19 +203,56 @@ func ToRootless(spec *specs.Spec) {
 				options = append(options, option)
 			}
 		}
-
 		mount.Options = options
-		mounts = append(mounts, mount)
 	}
-	// Add the sysfs mount as an rbind.
-	mounts = append(mounts, specs.Mount{
-		Source:      "/sys",
-		Destination: "/sys",
-		Type:        "none",
-		Options:     []string{"rbind", "nosuid", "noexec", "nodev", "ro"},
-	})
-	spec.Mounts = mounts
 
 	// Remove cgroup settings.
 	spec.Linux.Resources = nil
+}
+
+// fixupRootlessBindSys bind-mounts /sys.
+// This is required when netns is not unshared.
+func fixupRootlessBindSys(spec *specs.Spec) {
+	// Fix up mounts.
+	var mounts []specs.Mount
+	for _, mount := range spec.Mounts {
+		// Ignore all mounts that are under /sys.
+		if strings.HasPrefix(mount.Destination, "/sys") {
+			continue
+		}
+		mounts = append(mounts, mount)
+	}
+	mounts = append(mounts, []specs.Mount{
+		// Add the sysfs mount as an rbind.
+		// Note:
+		// * "ro" does not make submounts read-only recursively.
+		// * rbind work for sysfs but bind does not.
+		{
+			Source:      "/sys",
+			Destination: "/sys",
+			Type:        "none",
+			Options:     []string{"rbind", "nosuid", "noexec", "nodev", "ro"},
+		},
+		// Add cgroup mount so as to make them read-only
+		{
+			Destination: "/sys/fs/cgroup",
+			Type:        "cgroup",
+			Source:      "cgroup",
+			Options:     []string{"nosuid", "noexec", "nodev", "relatime", "ro"},
+		},
+	}...)
+	spec.Mounts = mounts
+	var maskedPaths []string
+	for _, masked := range spec.Linux.MaskedPaths {
+		// Ignore masked paths that are under /sys. (should be safe for rootless mode)
+		//
+		// Without this hack, `df` fails with "df: /sys/firmware/efi/efivars"
+		// because the efivars entry exists in mtab (because /sys is rbind-mounted)
+		// but /sys/firmware is masked.
+		if strings.HasPrefix(masked, "/sys") {
+			continue
+		}
+		maskedPaths = append(maskedPaths, masked)
+	}
+	spec.Linux.MaskedPaths = maskedPaths
 }
