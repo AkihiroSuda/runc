@@ -18,7 +18,7 @@ func IsRunningSystemd() bool {
 	return false
 }
 
-func NewSystemdCgroupsManager() (func(config *configs.Cgroup, paths map[string]string) cgroups.Manager, error) {
+func NewSystemdCgroupsManager(_ bool) (func(config *configs.Cgroup, paths map[string]string) cgroups.Manager, error) {
 	return nil, fmt.Errorf("Systemd not supported")
 }
 

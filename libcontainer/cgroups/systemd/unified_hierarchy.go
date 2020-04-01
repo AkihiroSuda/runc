@@ -21,9 +21,10 @@ import (
 )
 
 type UnifiedManager struct {
-	mu      sync.Mutex
-	Cgroups *configs.Cgroup
-	Paths   map[string]string
+	mu       sync.Mutex
+	Cgroups  *configs.Cgroup
+	Paths    map[string]string
+	Rootless bool
 }
 
 func (m *UnifiedManager) Apply(pid int) error {
@@ -33,6 +34,10 @@ func (m *UnifiedManager) Apply(pid int) error {
 		slice      = "system.slice"
 		properties []systemdDbus.Property
 	)
+
+	if m.Rootless {
+		slice = "user.slice"
+	}
 
 	if c.Paths != nil {
 		paths := make(map[string]string)
@@ -132,7 +137,7 @@ func (m *UnifiedManager) Apply(pid int) error {
 			logrus.Warnf("Timed out while waiting for StartTransientUnit(%s) completion signal from dbus. Continuing...", unitName)
 		}
 	} else if !isUnitExists(err) {
-		return err
+		return errors.Wrapf(err, "slice=%q, unitName=%q, properties=%+v", slice, unitName, properties)
 	}
 
 	path, err := getv2Path(m.Cgroups)
@@ -253,6 +258,8 @@ func (m *UnifiedManager) fsManager() (cgroups.Manager, error) {
 	if err != nil {
 		return nil, err
 	}
+	// NOTE: we don't pass m.Rootless to fs2.NewManager here, because even if m.Rootless is true,
+	// we should have already obtained write access for the path.
 	return fs2.NewManager(m.Cgroups, path, false)
 }
 

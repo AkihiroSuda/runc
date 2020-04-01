@@ -3,11 +3,13 @@
 package systemd
 
 import (
-	"errors"
+	"bufio"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,6 +20,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
 	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -103,21 +106,58 @@ func IsRunningSystemd() bool {
 func getDbusConnection() (*systemdDbus.Conn, error) {
 	connOnce.Do(func() {
 		connDbus, connErr = systemdDbus.New()
+		if connErr != nil {
+			// godbus.SessionBusPrivate() requires $DBUS_SESSION_BUS_ADDRESS to be specified.
+			// (godbus supports autodetection of the bus based on the uid value, but it doesn't work when we are in userns: https://github.com/godbus/dbus/blob/v5.0.3/conn_other.go#L51-L85)
+			if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+				addr, err := detectUserDbusSessionBusAddress()
+				if err != nil {
+					connErr = errors.Wrap(err, "could not detect the dbus session bus address")
+					return
+				}
+				os.Setenv("DBUS_SESSION_BUS_ADDRESS", addr)
+			}
+			connDbus, connErr = systemdDbus.NewUserConnection()
+			if connErr != nil {
+				// FIXME: we can't cross over the userns boundary?
+				// https://github.com/godbus/dbus/blob/v5.0.3/auth.go#L56 (calls os.Getuid)
+				panic(connErr) // FIXME
+			}
+		}
 	})
 	return connDbus, connErr
 }
 
-func NewSystemdCgroupsManager() (func(config *configs.Cgroup, paths map[string]string) cgroups.Manager, error) {
+func detectUserDbusSessionBusAddress() (string, error) {
+	b, err := exec.Command("systemctl", "--user", "show-environment").CombinedOutput()
+	if err != nil {
+		return "", errors.Wrap(err, "could not execute `systemctl --user show-environment`")
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(b))
+	for scanner.Scan() {
+		s := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(s, "DBUS_SESSION_BUS_ADDRESS=") {
+			return strings.TrimPrefix(s, "DBUS_SESSION_BUS_ADDRESS="), nil
+		}
+	}
+	return "", errors.New("could not detect DBUS_SESSION_BUS_ADDRESS from `systemctl --user show-environment`")
+}
+
+func NewSystemdCgroupsManager(rootless bool) (func(config *configs.Cgroup, paths map[string]string) cgroups.Manager, error) {
 	if !IsRunningSystemd() {
 		return nil, fmt.Errorf("systemd not running on this host, can't use systemd as a cgroups.Manager")
 	}
 	if cgroups.IsCgroup2UnifiedMode() {
 		return func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
 			return &UnifiedManager{
-				Cgroups: config,
-				Paths:   paths,
+				Cgroups:  config,
+				Paths:    paths,
+				Rootless: rootless,
 			}
 		}, nil
+	}
+	if rootless {
+		return nil, fmt.Errorf("cgroup v1 doesn't support rootless")
 	}
 	return func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
 		return &LegacyManager{

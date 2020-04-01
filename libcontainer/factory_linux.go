@@ -53,7 +53,18 @@ func InitArgs(args ...string) func(*LinuxFactory) error {
 // SystemdCgroups is an options func to configure a LinuxFactory to return
 // containers that use systemd to create and manage cgroups.
 func SystemdCgroups(l *LinuxFactory) error {
-	systemdCgroupsManager, err := systemd.NewSystemdCgroupsManager()
+	systemdCgroupsManager, err := systemd.NewSystemdCgroupsManager(false)
+	if err != nil {
+		return err
+	}
+	l.NewCgroupsManager = systemdCgroupsManager
+	return nil
+}
+
+// RootlessSystemdCgroups is an options func to configure a LinuxFactory to return
+// containers that use systemd to create and manage cgroups.
+func RootlessSystemdCgroups(l *LinuxFactory) error {
+	systemdCgroupsManager, err := systemd.NewSystemdCgroupsManager(true)
 	if err != nil {
 		return err
 	}
